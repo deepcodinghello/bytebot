@@ -111,9 +111,7 @@ BYTEBOT_AGENT_BASE_URL=http://bytebot-agent:9991
 BYTEBOT_DESKTOP_VNC_URL=http://bytebot-desktop:9990/websockify
 
 # API Keys (Add your own keys here)
-ANTHROPIC_API_KEY=
-OPENAI_API_KEY=
-GEMINI_API_KEY=
+# API keys will be read from environment variables if available
 
 NODE_ENV=production
 
@@ -157,17 +155,50 @@ if [ ! -f docker/.env ]; then
     touch docker/.env
 fi
 
-# Check if ANTHROPIC_API_KEY exists in docker/.env
+# Check and add API keys from environment variables or use placeholders
+# Check GEMINI_API_KEY
 if ! grep -q "^GEMINI_API_KEY=" docker/.env 2>/dev/null; then
-    echo ""
-    #echo "⚠️  ANTHROPIC_API_KEY not found in docker/.env"
-    #echo "📝 Adding ANTHROPIC_API_KEY to docker/.env"
-    #echo "   Please update it with your actual API key: sk-ant-..."
-    echo "📝 Adding GEMINI_API_KEY to docker/.env"
-    echo "GEMINI_API_KEY=YOUR_GEMINI_API_KEY_HERE" >> docker/.env
-    echo "✅ Added ANTHROPIC_API_KEY placeholder to docker/.env"
+    if [ -n "$GEMINI_API_KEY" ]; then
+        echo "📝 Adding GEMINI_API_KEY from environment variable to docker/.env"
+        echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> docker/.env
+        echo "✅ Added GEMINI_API_KEY from environment"
+    else
+        echo "📝 Adding GEMINI_API_KEY placeholder to docker/.env"
+        echo "GEMINI_API_KEY=YOUR_GEMINI_API_KEY_HERE" >> docker/.env
+        echo "⚠️  Please update GEMINI_API_KEY in docker/.env or set it as an environment variable"
+    fi
+else
+    echo "✅ GEMINI_API_KEY already exists in docker/.env"
+fi
+
+# Check ANTHROPIC_API_KEY
+if ! grep -q "^ANTHROPIC_API_KEY=" docker/.env 2>/dev/null; then
+    if [ -n "$ANTHROPIC_API_KEY" ]; then
+        echo "📝 Adding ANTHROPIC_API_KEY from environment variable to docker/.env"
+        echo "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" >> docker/.env
+        echo "✅ Added ANTHROPIC_API_KEY from environment"
+    else
+        echo "📝 Adding ANTHROPIC_API_KEY placeholder to docker/.env"
+        echo "ANTHROPIC_API_KEY=YOUR_ANTHROPIC_API_KEY_HERE" >> docker/.env
+        echo "⚠️  Please update ANTHROPIC_API_KEY in docker/.env or set it as an environment variable"
+    fi
 else
     echo "✅ ANTHROPIC_API_KEY already exists in docker/.env"
+fi
+
+# Check OPENAI_API_KEY
+if ! grep -q "^OPENAI_API_KEY=" docker/.env 2>/dev/null; then
+    if [ -n "$OPENAI_API_KEY" ]; then
+        echo "📝 Adding OPENAI_API_KEY from environment variable to docker/.env"
+        echo "OPENAI_API_KEY=${OPENAI_API_KEY}" >> docker/.env
+        echo "✅ Added OPENAI_API_KEY from environment"
+    else
+        echo "📝 Adding OPENAI_API_KEY placeholder to docker/.env"
+        echo "OPENAI_API_KEY=YOUR_OPENAI_API_KEY_HERE" >> docker/.env
+        echo "⚠️  Please update OPENAI_API_KEY in docker/.env or set it as an environment variable"
+    fi
+else
+    echo "✅ OPENAI_API_KEY already exists in docker/.env"
 fi
 
 # Function to check if source code has changed
