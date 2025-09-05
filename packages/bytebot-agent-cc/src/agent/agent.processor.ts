@@ -38,6 +38,7 @@ import {
 } from './agent.constants';
 import { query } from '@anthropic-ai/claude-code';
 import Anthropic from '@anthropic-ai/sdk';
+import { ContextCompressionService } from '../context/context-compression.service';
 
 @Injectable()
 export class AgentProcessor {
@@ -53,6 +54,7 @@ export class AgentProcessor {
     private readonly tasksService: TasksService,
     private readonly messagesService: MessagesService,
     private readonly inputCaptureService: InputCaptureService,
+    private readonly contextCompressionService: ContextCompressionService,
   ) {
     this.logger.log('AgentProcessor initialized');
   }
@@ -179,6 +181,18 @@ export class AgentProcessor {
       }
 
       this.logger.log(`Processing iteration for task ID: ${taskId}`);
+      
+      // Check and compress context if needed
+      const messages = await this.messagesService.findAll(taskId);
+      if (this.contextCompressionService.shouldCompress(messages)) {
+        this.logger.warn(`Context size exceeding limits for task ${taskId}, applying compression`);
+        const compressedMessages = await this.contextCompressionService.compressMessages(messages);
+        
+        // Log compression stats
+        this.logger.log(
+          `Compressed ${messages.length} messages to ${compressedMessages.length} messages`
+        );
+      }
 
       // Refresh abort controller for this iteration to avoid accumulating
       // "abort" listeners on a single AbortSignal across iterations.

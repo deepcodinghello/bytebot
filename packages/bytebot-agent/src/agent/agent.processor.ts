@@ -39,6 +39,7 @@ import {
 import { SummariesService } from '../summaries/summaries.service';
 import { handleComputerToolUse } from './agent.computer-use';
 import { ProxyService } from '../proxy/proxy.service';
+import { ContextCompressionService, CompressionStrategy } from '../context/context-compression.service';
 
 @Injectable()
 export class AgentProcessor {
@@ -57,6 +58,7 @@ export class AgentProcessor {
     private readonly googleService: GoogleService,
     private readonly proxyService: ProxyService,
     private readonly inputCaptureService: InputCaptureService,
+    private readonly contextCompressionService: ContextCompressionService,
   ) {
     this.services = {
       anthropic: this.anthropicService,
@@ -157,7 +159,7 @@ export class AgentProcessor {
       const latestSummary = await this.summariesService.findLatest(taskId);
       const unsummarizedMessages =
         await this.messagesService.findUnsummarized(taskId);
-      const messages = [
+      const rawMessages = [
         ...(latestSummary
           ? [
               {
@@ -179,11 +181,44 @@ export class AgentProcessor {
           : []),
         ...unsummarizedMessages,
       ];
+      
+      // Apply context compression if needed
+      const model = task.model as unknown as BytebotAgentModel;
+      const contextWindow = model.contextWindow || 200000;
+      
+      // Convert database messages to Anthropic format for compression
+      const anthropicMessages = rawMessages.map(msg => ({
+        role: msg.role === Role.USER ? 'user' as const : 'assistant' as const,
+        content: msg.content as any, // Content is JsonValue which needs casting
+      }));
+      
+      const compressedContext = await this.contextCompressionService.adaptiveCompress(
+        anthropicMessages,
+        contextWindow,
+      );
+      
+      // Convert compressed messages back to database format
+      const messages = compressedContext.messages.map(msg => ({
+        id: '',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        taskId,
+        summaryId: null,
+        userId: null,
+        role: msg.role === 'user' ? Role.USER : Role.ASSISTANT,
+        content: msg.content as any, // Cast to JsonValue
+      }));
+      
+      if (compressedContext.compressionRatio < 1) {
+        this.logger.log(
+          `Context compressed: ${compressedContext.originalTokenCount} -> ${compressedContext.compressedTokenCount} tokens ` +
+          `(${Math.round((1 - compressedContext.compressionRatio) * 100)}% reduction using ${compressedContext.strategy.type})`
+        );
+      }
       this.logger.debug(
         `Sending ${messages.length} messages to LLM for processing`,
       );
 
-      const model = task.model as unknown as BytebotAgentModel;
       let agentResponse: BytebotAgentResponse;
 
       const service = this.services[model.provider];
@@ -231,13 +266,14 @@ export class AgentProcessor {
         taskId,
       });
 
-      // Calculate if we need to summarize based on token usage
-      const contextWindow = model.contextWindow || 200000; // Default to 200k if not specified
+      // Calculate if we need to create a summary for future iterations
+      // This is in addition to real-time compression
       const contextThreshold = contextWindow * 0.75;
-      const shouldSummarize =
-        agentResponse.tokenUsage.totalTokens >= contextThreshold;
+      const shouldCreateSummary =
+        agentResponse.tokenUsage.totalTokens >= contextThreshold ||
+        compressedContext.compressionRatio < 0.7;
 
-      if (shouldSummarize) {
+      if (shouldCreateSummary) {
         try {
           // After we've successfully generated a response, we can summarize the unsummarized messages
           const summaryResponse = await service.generateMessage(
@@ -283,11 +319,12 @@ export class AgentProcessor {
             taskId,
           });
 
-          await this.messagesService.attachSummary(taskId, summary.id, [
-            ...messages.map((message) => {
-              return message.id;
-            }),
-          ]);
+          // Get IDs of original unsummarized messages for attachment
+          const originalMessageIds = unsummarizedMessages.map((message) => {
+            return message.id;
+          });
+          
+          await this.messagesService.attachSummary(taskId, summary.id, originalMessageIds);
 
           this.logger.log(
             `Generated summary for task ${taskId} due to token usage (${agentResponse.tokenUsage.totalTokens}/${contextWindow})`,

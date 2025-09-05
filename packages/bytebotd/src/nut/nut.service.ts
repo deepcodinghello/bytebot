@@ -137,6 +137,23 @@ export class NutService {
           );
         });
     });
+
+    // Check if xclip is installed
+    this.checkXclipInstallation();
+  }
+
+  private async checkXclipInstallation(): Promise<void> {
+    const { exec } = await import('child_process');
+    exec('which xclip', (error) => {
+      if (error) {
+        this.logger.warn(
+          'xclip is not installed. Clipboard paste functionality will fall back to direct typing. ' +
+          'To enable clipboard support, install xclip: sudo apt-get install xclip',
+        );
+      } else {
+        this.logger.log('xclip is installed - clipboard functionality available');
+      }
+    });
   }
 
   /**
@@ -251,14 +268,31 @@ export class NutService {
       await new Promise<void>((resolve, reject) => {
         const child = spawn('xclip', ['-selection', 'clipboard'], {
           env: { ...process.env, DISPLAY: ':0.0' },
-          stdio: ['pipe', 'ignore', 'inherit'],
+          stdio: ['pipe', 'pipe', 'pipe'],
         });
 
-        child.once('error', reject);
+        let stderr = '';
+        child.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+
+        child.once('error', (error: any) => {
+          // Check if xclip is not installed
+          if (error.code === 'ENOENT') {
+            this.logger.error('xclip is not installed. Falling back to typing text directly.');
+            reject(new Error('xclip is not installed. Please install xclip for clipboard functionality.'));
+          } else {
+            reject(error);
+          }
+        });
+        
         child.once('close', (code) => {
-          code === 0
-            ? resolve()
-            : reject(new Error(`xclip exited with code ${code}`));
+          if (code === 0) {
+            resolve();
+          } else {
+            this.logger.error(`xclip failed with stderr: ${stderr}`);
+            reject(new Error(`xclip exited with code ${code}: ${stderr}`));
+          }
         });
 
         child.stdin.write(text);
@@ -271,7 +305,11 @@ export class NutService {
       await keyboard.pressKey(Key.LeftControl, Key.V);
       await keyboard.releaseKey(Key.LeftControl, Key.V);
     } catch (error) {
-      throw new Error(`Failed to paste text: ${error.message}`);
+      // If xclip fails, fall back to typing the text directly
+      this.logger.warn(`Clipboard paste failed: ${error.message}. Falling back to direct typing.`);
+      
+      // Type the text directly as a fallback
+      await this.typeText(text, 0);
     }
   }
 

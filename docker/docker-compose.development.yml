@@ -22,6 +22,8 @@ services:
       - "9990:9990" # bytebotd service & noVNC
     environment:
       - DISPLAY=:0
+    volumes:
+      - ../runtime/shared:/shared
     networks:
       - bytebot-network
 

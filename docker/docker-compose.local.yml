@@ -6,8 +6,8 @@ services:
     build:
       context: ../packages/
       dockerfile: bytebotd/Dockerfile
-    # Use pre-built image
-    image: ghcr.io/bytebot-ai/bytebot-desktop:edge
+    # Comment out to use local build
+    # image: ghcr.io/bytebot-ai/bytebot-desktop:edge
     shm_size: "2g"
     container_name: bytebot-desktop
     restart: unless-stopped
@@ -41,8 +41,8 @@ services:
     build:
       context: ../packages/
       dockerfile: bytebot-agent/Dockerfile
-    # Use pre-built image
-    image: ghcr.io/bytebot-ai/bytebot-agent:edge
+    # Comment out to use local build
+    # image: ghcr.io/bytebot-ai/bytebot-agent:edge
     container_name: bytebot-agent
     restart: unless-stopped
     ports:
@@ -65,8 +65,8 @@ services:
       args:
         - BYTEBOT_AGENT_BASE_URL=${BYTEBOT_AGENT_BASE_URL:-http://bytebot-agent:9991}
         - BYTEBOT_DESKTOP_VNC_URL=${BYTEBOT_DESKTOP_VNC_URL:-http://bytebot-desktop:9990/websockify}
-    # Use pre-built image
-    image: ghcr.io/bytebot-ai/bytebot-ui:edge
+    # Comment out to use local build
+    # image: ghcr.io/bytebot-ai/bytebot-ui:edge
     container_name: bytebot-ui
     restart: unless-stopped
     ports:
@@ -77,6 +77,7 @@ services:
       - BYTEBOT_DESKTOP_VNC_URL=${BYTEBOT_DESKTOP_VNC_URL:-http://bytebot-desktop:9990/websockify}
     depends_on:
       - bytebot-agent
+      - bytebot-desktop
     networks:
       - bytebot-network
 
